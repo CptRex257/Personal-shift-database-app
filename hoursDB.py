@@ -38,49 +38,69 @@ def initiateTables(months):
     else:
         print("Rozumím, nové řádky nebudou přidány")
 
-def manageShift(month, day, shiftLength=None, shiftStart=None, shiftEnd=None, snackBreak=None):
-    if shiftStart == None and shiftEnd == None:
-        if snackBreak == None:
-            if shiftLength > 4:
-                snackBreak = 1
-            else:
-                snackBreak = 0
-        
-        if snackBreak == 1:
-            shiftLengthBR = shiftLength - 0.5
-        else:
-            shiftLengthBR = shiftLength
-        
-        conn.execute(f'''
-        UPDATE {month}
-        SET LENGTH = {shiftLength}, BREAK = {snackBreak}, WORKED_HOURS = {(shiftLengthBR)}
-        WHERE ID = {day}
-        '''
-        )
-        conn.commit()
-    
+def manageShift(month, day, **kwargs):
+    columns = {
+        "shiftStart": "SHIFT_START",
+        "shiftEnd": "SHIFT_END",
+        "shiftLength": "LENGTH",
+        "snackBreak": "BREAK"
+    }
+    print(kwargs)
+    for i in kwargs:
+        if kwargs[i] != None:
+            conn.execute(f'''
+            UPDATE {month}
+            SET {columns[i]} = "{kwargs[i]}"
+            WHERE ID = {day}
+            ''')
+            conn.commit()
+
+    if "shiftStart" in kwargs and kwargs["shiftStart"] != None:
+        startTime = kwargs["shiftStart"].split(":")
     else:
-        startTime = shiftStart.split(":")
-        endTime = shiftEnd.split(":")
-        shiftLength = (int(endTime[0])+(int(endTime[1])/60))-(int(startTime[0])+(int(startTime[1])/60))
-        if snackBreak == None:
-            if shiftLength > 4:
-                snackBreak = 1
-            else:
-                snackBreak = 0
+        startTime = conn.execute(f'''
+        SELECT SHIFT_START FROM {month}
+        WHERE ID = {day}
+        ''')
+        for i in startTime:
+            startTime = i[0].split(":")
     
+    if "shiftEnd" in kwargs and kwargs["shiftEnd"] != None:
+        endTime = kwargs["shiftEnd"].split(":")
+    else:
+        endTime = conn.execute(f'''
+        SELECT SHIFT_END FROM {month}
+        WHERE ID = {day}
+        ''')
+        for i in endTime:
+            endTime = i[0].split(":")
+    
+    if "shiftLength" in kwargs and kwargs["shiftLength"] != None:
+        shiftLength = kwargs["shiftLength"]
+    else:
+        shiftLength = (int(endTime[0])+(int(endTime[1])/60))-(int(startTime[0])+(int(startTime[1])/60))
+
+    if "snackBreak" in kwargs and kwargs["snackBreak"] != None:
+        snackBreak = kwargs["snackBreak"]
         if snackBreak == 1:
             shiftLengthBR = shiftLength - 0.5
         else:
             shiftLengthBR = shiftLength
-    
-        conn.execute(f'''
-        UPDATE {month}
-        SET SHIFT_START = "{shiftStart}", SHIFT_END = "{shiftEnd}", LENGTH = {shiftLength}, BREAK = {snackBreak}, WORKED_HOURS = {(shiftLengthBR)}
-        WHERE ID = {day}
-        '''
-        )
-        conn.commit()
+    else:
+        if shiftLength > 4:
+            shiftLengthBR = shiftLength - 0.5
+            snackBreak = 1
+        else:
+            shiftLengthBR = shiftLength
+            snackBreak = 0
+
+        
+    conn.execute(f'''
+    UPDATE {month}
+    SET BREAK = {snackBreak}, LENGTH = {shiftLength}, WORKED_HOURS = {shiftLengthBR}
+    WHERE ID = {day}
+    ''')
+    conn.commit()
 
 
 def deleteShift(month, day=None):
@@ -101,11 +121,6 @@ def deleteShift(month, day=None):
         conn.commit()
 
 
-def getShifts(shifts):
-    for i in shifts:
-        manageShift(i[0], i[1])
-
-
 def returnMonth(month):
     monthTable = conn.execute(f'''
     SELECT * FROM {month}
@@ -117,6 +132,7 @@ def returnMonth(month):
         monthList.append(line)
     
     return monthList
+
 
 def returnDay(month, day):
     dayTable = conn.execute(f'''
@@ -133,7 +149,9 @@ def returnDay(month, day):
 
 #createTables(months)
 #initiateTables(months)
-#manageShift("Leden", 2, shiftStart="12:00", shiftEnd="20:00")
+#manageShift("Leden", 4, shiftStart="12:00", shiftEnd="20:00")
+#manageShift("Leden", 4, shiftLength=8)
+#manageShift("Leden", 4, shiftStart="10:00")
 #deleteShift("Leden", 5)
 #deleteShift("Leden")
 #print(returnMonth(("Leden"))
@@ -143,10 +161,56 @@ if __name__ == "__main__":
     while 1:
         option = input('''Choose your action:
 
-help - help *command name*; info for chosen command will be shown
-MS - MS *parameters*; change speficied shifts' data with specified parameters
-DS - DS *parameters*; delete specified shift
-RM - RM *parameters*; will return all shifts in specified month
-RD - RD *parameters*; will return specified days' shift
+Manage shift - MS *parameters -> month, day, **kwargs - shiftStart=, shiftEnd=, shiftLength=, snackBreak=*; changes values of specified shift to values in parameters
+Delete shift - DS *parameters -> month, day=None*; deletes specified shift
+Return month - RM *parameters -> month* returns all shifts in specified month
+Return day   - RD *parameters -> month, day*; returns specified days' shift
+
+Exit         - EXIT; exits the program 
 
 Your action: ''')
+        if "MS" in option.upper():
+            text = option.split(" ")
+            text = text[1].split(",")
+            month = text [0]
+            day = text[1]
+            text.pop(0)
+            text.pop(0)
+            Start = None
+            End = None
+            Length = None
+            Break = None
+            for i in text:
+                i = i.split("=")
+                if i[0].upper() == "SHIFTSTART":
+                    Start = i[1]
+                elif i[0].upper() == "SHIFTEND":
+                    End = i[1]
+                elif i[0].upper() == "SHIFTLENGTH":
+                    Length = i[1]
+                elif i[0].upper() == "SNACKBREAK":
+                    Break = i[1]
+
+            manageShift(month, day, shiftStart=Start, shiftEnd=End, shiftLength=Length, snackBreak=Break)
+        elif "DS" in option.upper():
+            text = option.split(" ")
+            text = text[1].split(",")
+            if len(text) == 1:
+                deleteShift(text[0])
+                print(f"Shifts in month {text[0]} have been successfully deleted.")
+            elif len(text) == 2:
+                deleteShift(text[0], text[1])
+                print(f"Shift {text[1]}. {text[0]} has been successfully deleted.")
+            else:
+                print(f"Zadané parametry - {text} jsou nesprávné")
+        elif "RM" in option.upper():
+            text = option.split(" ")
+            text = text[1]
+            print(returnMonth(text))
+        elif "RD" in option.upper():
+            text = option.split(" ")
+            text = text[1].split(",")
+            print(returnDay(text[0], text[1]))
+        elif "EXIT" in option.upper():
+            break
+
